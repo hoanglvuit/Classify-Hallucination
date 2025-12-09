@@ -14,12 +14,6 @@ Phân loại đầu ra (generated response) của LLM thành 3 nhãn dựa trên
 - **`intrinsic`**: Phản hồi mâu thuẫn hoặc bóp méo thông tin so với ngữ cảnh
 - **`extrinsic`**: Phản hồi bổ sung thông tin không có căn cứ hoặc không thể truy xuất từ ngữ cảnh
 
-### Thể lệ cuộc thi
-
-- **Mô hình được phép**: LLM ≤ 7B parameters, encoder-only (BERT, PhoBERT, XLM-R, ...), retriever, hoặc mô hình chuyên biệt khác (public & reproducible)
-- **Không được sử dụng**: API thương mại (GPT, Claude, Gemini, ...)
-- **Không fine-tune**: Trên dữ liệu ngoài bộ chính thức
-
 Tham khảo thêm tại: [CodaBench Competition](https://www.codabench.org/competitions/10153/#/pages-tab)
 
 ---
@@ -224,35 +218,6 @@ python stack_ensemble.py
 
 ---
 
-## ⚙️ Cấu hình huấn luyện
-
-### Base Models (Transformers)
-
-- **Seed**: `22520465` (cố định cho reproducibility)
-- **Cross-Validation**: 5-fold Stratified K-Fold
-- **Max Length**: 512 tokens
-- **Learning Rate**: 0.00001 (cho tất cả models)
-- **Batch Size**: Tùy model (4-16)
-- **Epochs**: 1-4 tùy model
-- **Gradient Checkpointing**: Enabled cho các model lớn
-- **Evaluation Metric**: F1 Macro
-
-### XGBoost Meta Model
-
-- **Seed**: `22520465` (cố định cho reproducibility)
-- **GridSearchCV**: 5-fold Stratified K-Fold
-- **Scoring**: F1 Macro
-- **Hyperparameter Search Space**:
-  - `n_estimators`: [300, 500, 700]
-  - `max_depth`: [3, 6]
-  - `learning_rate`: [0.01, 0.1, 0.2]
-  - `subsample`: [0.8, 1]
-  - `colsample_bytree`: [0.8, 1]
-  - `gamma`: [0, 0.1, 0.5]
-- **Tree Method**: `hist` (histogram)
-- **Device**: `cuda` (GPU) hoặc `cpu`
-
----
 
 ## 🚀 Hướng dẫn reproduce kết quả
 
@@ -316,21 +281,6 @@ Xem `requirements.txt` để biết chi tiết. Các thư viện chính:
 - `xgboost`: Cho stack ensemble
 - `evaluate`: 0.4.6
 - `openpyxl`: 3.1.5 (đọc Excel)
-
----
-
-## 📝 Lưu ý
-
-1. **Seed**: Tất cả random operations sử dụng seed `22520465` để đảm bảo reproducibility
-2. **Dịch thuật**: Có thể bỏ qua bằng cách set `TRANSLATE=false` nếu dữ liệu đã được dịch
-3. **Custom Model**: `dangvantuan/vietnamese-document-embedding` cần custom implementation trong `Vietnamese_impl/`
-4. **Checkpoints**: Models được lưu trong `results/` để có thể inference lại sau
-5. **OOF Predictions**: Sử dụng Out-of-Fold predictions để train meta model, tránh data leakage
-6. **XGBoost Training**: 
-   - Notebook `XGBoost.ipynb` được thiết kế để chạy trên Kaggle hoặc môi trường có GPU
-   - GridSearchCV có thể mất nhiều thời gian (1080 fits với 5-fold CV)
-   - Nếu đã có `xgb_best_model.pkl`, có thể bỏ qua bước train và dùng trực tiếp `stack_ensemble.py`
-7. **Path trong notebook**: Notebook sử dụng path Kaggle (`/kaggle/input/...`), cần điều chỉnh khi chạy local
 
 ---
 
