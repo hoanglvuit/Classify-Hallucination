@@ -51,13 +51,6 @@ DSC_2025/
 │   ├── SemViQA_tc-erniem-viwikifc/
 │   └── SemViQA_tc-xlmr-isedsc01/
 │
-├── output_true/                   # Predictions đã đổi tên (tên ngắn gọn)
-│   ├── cross/
-│   ├── deberta/
-│   ├── dvt/
-│   ├── erniem/
-│   ├── roberta/
-│   └── xlmr/
 │
 ├── results/                       # Checkpoints của các mô hình đã huấn luyện
 │   └── model_{model_name}/
@@ -70,15 +63,16 @@ DSC_2025/
 │
 ├── train.py                       # Script huấn luyện chính
 ├── inference.py                   # Script inference từ checkpoint
-├── stack_ensemble.py              # Stack ensemble với XGBoost
+├── stack_ensemble.py              # Stack ensemble với XGBoost (inference)
 ├── translate_data.py              # Dịch dữ liệu từ tiếng Việt sang tiếng Anh
 ├── utils.py                       # Các hàm tiện ích (preprocessing, evaluation, ...)
 ├── test.py                        # Soft voting ensemble
+├── XGBoost.ipynb                  # Notebook train XGBoost với GridSearchCV
 │
 ├── train.sh                       # Script huấn luyện tất cả models
 ├── inference.sh                   # Script inference tất cả models
 ├── requirements.txt               # Dependencies
-├── xgb_best_model.pkl            # XGBoost model đã được train
+├── xgb_best_model.pkl            # XGBoost model đã được train (best từ GridSearch)
 └── README.md                      # File này
 ```
 
@@ -118,7 +112,17 @@ Sử dụng 6 mô hình đa dạng để tận dụng các kiến trúc và các
 
 - **Input Features**: Xác suất từ 6 base models (18 features: `prob_intrinsic`, `prob_extrinsic`, `prob_no` × 6 models)
 - **Meta Model**: XGBoost Classifier
-- **Training**: Sử dụng OOF (Out-of-Fold) predictions từ base models để train meta model
+- **Training**: 
+  - Sử dụng OOF (Out-of-Fold) predictions từ base models để train meta model
+  - **GridSearchCV** để tìm best hyperparameters:
+    - `n_estimators`: [300, 500, 700]
+    - `max_depth`: [3, 6]
+    - `learning_rate`: [0.01, 0.1, 0.2]
+    - `subsample`: [0.8, 1]
+    - `colsample_bytree`: [0.8, 1]
+    - `gamma`: [0, 0.1, 0.5]
+  - Cross-validation: 5-fold Stratified K-Fold
+  - Scoring metric: F1 Macro
 
 ---
 
@@ -186,7 +190,28 @@ TRANSLATE=false ./inference.sh  # Bỏ qua bước dịch
 - Với test: Average xác suất qua 5 folds
 - Tạo feature matrix: 18 features (3 probs × 6 models)
 
-### Bước 5: Stack Ensemble với XGBoost
+### Bước 5: Train XGBoost Meta Model (GridSearchCV)
+
+**Sử dụng notebook `XGBoost.ipynb`**:
+
+1. **Feature Engineering**:
+   - Thu thập OOF predictions từ tất cả folds của 6 base models
+   - Tạo feature matrix: 18 features (3 probs × 6 models)
+   - Với train: Stack tất cả folds theo chiều dọc
+   - Với test: Average xác suất qua 5 folds
+
+2. **GridSearchCV**:
+   - Tìm best hyperparameters với 5-fold Stratified K-Fold
+   - Scoring: F1 Macro
+   - Tổng cộng 216 candidates (6 × 2 × 3 × 2 × 2 × 3)
+   - Seed: `22520465` (reproducibility)
+
+3. **Lưu model**:
+   - Best model được lưu vào `xgb_best_model.pkl`
+
+**Lưu ý**: Notebook này được chạy trên Kaggle/môi trường có GPU để tăng tốc GridSearch.
+
+### Bước 6: Inference với XGBoost Model
 
 ```bash
 pip install scikit-learn==1.2.2 xgboost
@@ -201,6 +226,8 @@ python stack_ensemble.py
 
 ## ⚙️ Cấu hình huấn luyện
 
+### Base Models (Transformers)
+
 - **Seed**: `22520465` (cố định cho reproducibility)
 - **Cross-Validation**: 5-fold Stratified K-Fold
 - **Max Length**: 512 tokens
@@ -209,6 +236,21 @@ python stack_ensemble.py
 - **Epochs**: 1-4 tùy model
 - **Gradient Checkpointing**: Enabled cho các model lớn
 - **Evaluation Metric**: F1 Macro
+
+### XGBoost Meta Model
+
+- **Seed**: `22520465` (cố định cho reproducibility)
+- **GridSearchCV**: 5-fold Stratified K-Fold
+- **Scoring**: F1 Macro
+- **Hyperparameter Search Space**:
+  - `n_estimators`: [300, 500, 700]
+  - `max_depth`: [3, 6]
+  - `learning_rate`: [0.01, 0.1, 0.2]
+  - `subsample`: [0.8, 1]
+  - `colsample_bytree`: [0.8, 1]
+  - `gamma`: [0, 0.1, 0.5]
+- **Tree Method**: `hist` (histogram)
+- **Device**: `cuda` (GPU) hoặc `cpu`
 
 ---
 
@@ -240,11 +282,19 @@ chmod +x ./train.sh
 ./train.sh
 ```
 
-Sau đó chạy stack ensemble:
+Sau đó train XGBoost model (nếu chưa có `xgb_best_model.pkl`):
+
+1. Mở notebook `XGBoost.ipynb`
+2. Chạy tất cả cells để train với GridSearchCV
+3. Model best sẽ được lưu vào `xgb_best_model.pkl`
+
+Cuối cùng, chạy inference:
 
 ```bash
 python stack_ensemble.py
 ```
+
+**Lưu ý**: Nếu đã có `xgb_best_model.pkl`, có thể bỏ qua bước train XGBoost và chạy trực tiếp `stack_ensemble.py`
 
 ---
 
@@ -276,6 +326,11 @@ Xem `requirements.txt` để biết chi tiết. Các thư viện chính:
 3. **Custom Model**: `dangvantuan/vietnamese-document-embedding` cần custom implementation trong `Vietnamese_impl/`
 4. **Checkpoints**: Models được lưu trong `results/` để có thể inference lại sau
 5. **OOF Predictions**: Sử dụng Out-of-Fold predictions để train meta model, tránh data leakage
+6. **XGBoost Training**: 
+   - Notebook `XGBoost.ipynb` được thiết kế để chạy trên Kaggle hoặc môi trường có GPU
+   - GridSearchCV có thể mất nhiều thời gian (1080 fits với 5-fold CV)
+   - Nếu đã có `xgb_best_model.pkl`, có thể bỏ qua bước train và dùng trực tiếp `stack_ensemble.py`
+7. **Path trong notebook**: Notebook sử dụng path Kaggle (`/kaggle/input/...`), cần điều chỉnh khi chạy local
 
 ---
 
